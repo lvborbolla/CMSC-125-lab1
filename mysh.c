@@ -1,24 +1,38 @@
+// mysh.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "shell.h"
 
-int main() {
-    char line[1024];
-    while (1) {
-        printf("mysh> ");
-        if (!fgets(line, sizeof(line), stdin)) break;
+#define MAX_LINE 1024
 
+int main() {
+    char line[MAX_LINE];
+
+    while (1) {
+        // Display prompt
+        printf("mysh> ");
+        fflush(stdout);
+
+        // Read input
+        if (!fgets(line, sizeof(line), stdin)) {
+            printf("\n"); // Handle Ctrl+D gracefully
+            break;
+        }
+
+        // Remove trailing newline
+        line[strcspn(line, "\n")] = '\0';
+
+        // Skip empty input
+        if (strlen(line) == 0) continue;
+
+        // Parse the command
         Command cmd = parse_command(line);
 
-        if (cmd.command != NULL)
-            execute_command(&cmd);
-
-        // Free memory after execution
-        for (int i = 0; cmd.args[i]; i++) free(cmd.args[i]);
-        if (cmd.input_file) free(cmd.input_file);
-        if (cmd.output_file) free(cmd.output_file);
-        if (cmd.command) free(cmd.command);
+        // Execute the command
+        execute_command(&cmd);
     }
+
+    printf("Exiting mysh...\n");
     return 0;
 }

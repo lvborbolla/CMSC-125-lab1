@@ -1,11 +1,20 @@
+// parser.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "shell.h"
 
+/**
+ * Parse a raw input line into a Command struct.
+ * Handles:
+ *  - Command name and arguments
+ *  - Input redirection (<)
+ *  - Output redirection (> and >>)
+ *  - Background execution (&)
+ */
 Command parse_command(char *line) {
     Command cmd;
-    
+
     // Initialize struct
     cmd.command = NULL;
     for (int i = 0; i < 256; i++) cmd.args[i] = NULL;
@@ -14,25 +23,25 @@ Command parse_command(char *line) {
     cmd.append = 0;
     cmd.background = 0;
 
-    // Tokenize the line
     char *token;
     int arg_index = 0;
 
+    // Tokenize the line by whitespace
     token = strtok(line, " \t\n");
     while (token != NULL) {
         if (strcmp(token, "<") == 0) {
-            // Next token is input file
+            // Input redirection
             token = strtok(NULL, " \t\n");
             if (token) cmd.input_file = strdup(token);
         } else if (strcmp(token, ">") == 0) {
-            // Next token is output file (overwrite)
+            // Output redirection (overwrite)
             token = strtok(NULL, " \t\n");
             if (token) {
                 cmd.output_file = strdup(token);
                 cmd.append = 0;
             }
         } else if (strcmp(token, ">>") == 0) {
-            // Next token is output file (append)
+            // Output redirection (append)
             token = strtok(NULL, " \t\n");
             if (token) {
                 cmd.output_file = strdup(token);
@@ -42,7 +51,7 @@ Command parse_command(char *line) {
             // Background execution
             cmd.background = 1;
         } else {
-            // First token is command, rest are args
+            // Command or argument
             if (cmd.command == NULL) {
                 cmd.command = strdup(token);
                 cmd.args[arg_index++] = cmd.command;
@@ -50,6 +59,7 @@ Command parse_command(char *line) {
                 cmd.args[arg_index++] = strdup(token);
             }
         }
+
         token = strtok(NULL, " \t\n");
     }
 
