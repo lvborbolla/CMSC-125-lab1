@@ -2,21 +2,35 @@
 #include "shell.h"
 
 void parse_command(char *line, Command *cmd) {
-    char *token;
+    memset(cmd, 0, sizeof(Command));
+
+    char *token = strtok(line, " ");
     int argc = 0;
 
-    // reset struct
-    cmd->command = NULL;
-    for (int i = 0; i < MAX_ARGS; i++)
-        cmd->args[i] = NULL;
+    while (token) {
 
-    token = strtok(line, " \t\n");
-    while (token != NULL && argc < MAX_ARGS - 1) {
-        cmd->args[argc++] = token;
-        token = strtok(NULL, " \t\n");
+        if (!strcmp(token, "<"))
+            cmd->input_file = strtok(NULL, " ");
+
+        else if (!strcmp(token, ">")) {
+            cmd->output_file = strtok(NULL, " ");
+            cmd->append = false;
+        }
+
+        else if (!strcmp(token, ">>")) {
+            cmd->output_file = strtok(NULL, " ");
+            cmd->append = true;
+        }
+
+        else if (!strcmp(token, "&"))
+            cmd->background = true;
+
+        else
+            cmd->args[argc++] = token;
+
+        token = strtok(NULL, " ");
     }
-    cmd->args[argc] = NULL;
 
-    if (argc > 0)
-        cmd->command = cmd->args[0];
+    cmd->args[argc] = NULL;
+    cmd->command = cmd->args[0];
 }
