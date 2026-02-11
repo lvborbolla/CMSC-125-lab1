@@ -1,23 +1,18 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-#include <stdbool.h>
+#define MAX_LINE 1024
+#define MAX_ARGS 256
 
-// Command structure for storing parsed command info
 typedef struct {
-    char *command;         // Command name
-    char *args[256];       // Arguments (NULL-terminated)
-    char *input_file;      // For '<' redirection
-    char *output_file;     // For '>' or '>>' redirection
-    int append;            // 1 if '>>', 0 if '>'
-    int background;        // 1 if '&', 0 otherwise
+    char *command;
+    char *args[MAX_ARGS];
 } Command;
 
-// Function prototypes
-Command parse_command(char *line);
-void execute_command(Command *cmd);
-int builtin_cd(char *path);
-int builtin_pwd();
-void builtin_exit();
+// parse user input into command struct
+void parse_command(char *line, Command *cmd);
+
+// execute built-in command
+int execute_builtin(Command *cmd);
 
 #endif

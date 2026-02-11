@@ -1,60 +1,22 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "shell.h"
 
-Command parse_command(char *line) {
-    Command cmd;
-    
-    // Initialize struct
-    cmd.command = NULL;
-    for (int i = 0; i < 256; i++) cmd.args[i] = NULL;
-    cmd.input_file = NULL;
-    cmd.output_file = NULL;
-    cmd.append = 0;
-    cmd.background = 0;
-
-    // Tokenize the line
+void parse_command(char *line, Command *cmd) {
     char *token;
-    int arg_index = 0;
+    int argc = 0;
+
+    // reset struct
+    cmd->command = NULL;
+    for (int i = 0; i < MAX_ARGS; i++)
+        cmd->args[i] = NULL;
 
     token = strtok(line, " \t\n");
-    while (token != NULL) {
-        if (strcmp(token, "<") == 0) {
-            // Next token is input file
-            token = strtok(NULL, " \t\n");
-            if (token) cmd.input_file = strdup(token);
-        } else if (strcmp(token, ">") == 0) {
-            // Next token is output file (overwrite)
-            token = strtok(NULL, " \t\n");
-            if (token) {
-                cmd.output_file = strdup(token);
-                cmd.append = 0;
-            }
-        } else if (strcmp(token, ">>") == 0) {
-            // Next token is output file (append)
-            token = strtok(NULL, " \t\n");
-            if (token) {
-                cmd.output_file = strdup(token);
-                cmd.append = 1;
-            }
-        } else if (strcmp(token, "&") == 0) {
-            // Background execution
-            cmd.background = 1;
-        } else {
-            // First token is command, rest are args
-            if (cmd.command == NULL) {
-                cmd.command = strdup(token);
-                cmd.args[arg_index++] = cmd.command;
-            } else {
-                cmd.args[arg_index++] = strdup(token);
-            }
-        }
+    while (token != NULL && argc < MAX_ARGS - 1) {
+        cmd->args[argc++] = token;
         token = strtok(NULL, " \t\n");
     }
+    cmd->args[argc] = NULL;
 
-    // Null-terminate args array
-    cmd.args[arg_index] = NULL;
-
-    return cmd;
+    if (argc > 0)
+        cmd->command = cmd->args[0];
 }

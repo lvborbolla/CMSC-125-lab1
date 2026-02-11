@@ -1,24 +1,24 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "shell.h"
 
 int main() {
-    char line[1024];
+    char line[MAX_LINE];
+    Command cmd;
+
     while (1) {
         printf("mysh> ");
-        if (!fgets(line, sizeof(line), stdin)) break;
+        fflush(stdout);
 
-        Command cmd = parse_command(line);
+        if (!fgets(line, MAX_LINE, stdin))
+            break;
 
-        if (cmd.command != NULL)
-            execute_command(&cmd);
+        parse_command(line, &cmd);
 
-        // Free memory after execution
-        for (int i = 0; cmd.args[i]; i++) free(cmd.args[i]);
-        if (cmd.input_file) free(cmd.input_file);
-        if (cmd.output_file) free(cmd.output_file);
-        if (cmd.command) free(cmd.command);
+        int ret = execute_builtin(&cmd);
+        if (ret == -1)
+            break; // exit shell
     }
+
     return 0;
 }
