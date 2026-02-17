@@ -143,4 +143,4 @@ shell.h
 Contains shared struct definitions and function prototypes used across modules.
 
 ## Screenshots Showing Functionality
-(Add screenshots here demonstrating the required features)
+(Future Screenshots shall be added here)

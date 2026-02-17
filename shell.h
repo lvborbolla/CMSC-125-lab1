@@ -19,5 +19,7 @@ void execute_command(Command *cmd);
 int builtin_cd(char *path);
 int builtin_pwd();
 void builtin_exit();
+// Reap background jobs (non-blocking)
+void reap_background_jobs();
 
 #endif
