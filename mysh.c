@@ -10,6 +10,8 @@ int main() {
     char line[MAX_LINE];
 
     while (1) {
+        // Reap any finished background jobs
+        reap_background_jobs();
         // Display prompt
         printf("mysh> ");
         fflush(stdout);
