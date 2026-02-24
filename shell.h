@@ -3,26 +3,23 @@
 
 #include <stdbool.h>
 
-#define MAX_LINE 1024
-#define MAX_ARGS 256
-
-// Structure representing a parsed command
+// Command structure for storing parsed command info
 typedef struct {
-    char *command;        // Name of command (e.g., "ls")
-    char *args[MAX_ARGS]; // Argument list (NULL-terminated)
-    char *input_file;     // File for input redirection (<)
-    char *output_file;    // File for output redirection (> or >>)
-    bool append;          // true if >> used
-    bool background;      // true if & present
+    char *command;         // Command name
+    char *args[256];       // Arguments (NULL-terminated)
+    char *input_file;      // For '<' redirection
+    char *output_file;     // For '>' or '>>' redirection
+    int append;            // 1 if '>>', 0 if '>'
+    int background;        // 1 if '&', 0 otherwise
 } Command;
 
-// Parses raw user input into Command struct
-void parse_command(char *line, Command *cmd);
-
-// Executes parsed command
-int execute_command(Command *cmd);
-
-// Cleans up background processes
-void reap_background();
+// Function prototypes
+Command parse_command(char *line);
+void execute_command(Command *cmd);
+int builtin_cd(char *path);
+int builtin_pwd();
+void builtin_exit();
+// Reap background jobs (non-blocking)
+void reap_background_jobs();
 
 #endif

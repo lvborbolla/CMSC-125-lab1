@@ -1,113 +1,328 @@
+// executor.c
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <errno.h>
 #include "shell.h"
 
-// Reap finished background processes to prevent zombies
-void reap_background() {
-    // -1 means check ANY child process
-    // WNOHANG means do not block
-    while (waitpid(-1, NULL, WNOHANG) > 0);
+// Job table for background jobs
+#define MAX_JOBS 128
+
+typedef struct {
+    int id;
+    pid_t pid;
+    char *cmd;   // strdup'd command string
+    int running; // 1 if active, 0 if free
+} Job;
+
+static Job jobs[MAX_JOBS];
+static int next_job_id = 1;
+
+// Helper: build a single string representation of the command+args
+static char *build_cmd_string(Command *cmd) {
+    if (!cmd || !cmd->command) return NULL;
+    size_t bufsize = 1024;
+    char *buf = malloc(bufsize);
+    if (!buf) return NULL;
+    buf[0] = '\0';
+    for (int i = 0; cmd->args[i]; i++) {
+        size_t need = strlen(buf) + strlen(cmd->args[i]) + 2;
+        if (need > bufsize) {
+            bufsize = need + 256;
+            char *n = realloc(buf, bufsize);
+            if (!n) { free(buf); return NULL; }
+            buf = n;
+        }
+        if (i > 0) strcat(buf, " ");
+        strcat(buf, cmd->args[i]);
+    }
+    return buf;
 }
 
-// Execute command
-int execute_command(Command *cmd) {
+// Add a background job to the table. Returns the job id or -1 on failure.
+static int add_job(pid_t pid, const char *cmdstr) {
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (!jobs[i].running) {
+            jobs[i].id = next_job_id++;
+            jobs[i].pid = pid;
+            jobs[i].cmd = cmdstr ? strdup(cmdstr) : NULL;
+            jobs[i].running = 1;
+            return jobs[i].id;
+        }
+    }
+    return -1; // no slot
+}
 
-    // Empty command
-    if (!cmd->command)
-        return 0;
+// Remove job by pid and free resources
+static void remove_job_by_pid(pid_t pid) {
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (jobs[i].running && jobs[i].pid == pid) {
+            jobs[i].running = 0;
+            if (jobs[i].cmd) { free(jobs[i].cmd); jobs[i].cmd = NULL; }
+            return;
+        }
+    }
+}
 
-    // ======================
-    // BUILT-IN COMMANDS
-    // ======================
+// Find job id by pid, or -1
+static int find_job_id_by_pid(pid_t pid) {
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (jobs[i].running && jobs[i].pid == pid) return jobs[i].id;
+    }
+    return -1;
+}
 
-    // Exit shell
-    if (strcmp(cmd->command, "exit") == 0)
+// Reap any finished background jobs (non-blocking)
+void reap_background_jobs() {
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        int jid = find_job_id_by_pid(pid);
+        if (jid != -1) {
+            // Print summary
+            if (WIFEXITED(status)) {
+                int ec = WEXITSTATUS(status);
+                printf("[%d] Done: PID %d exited with %d\n", jid, pid, ec);
+            } else if (WIFSIGNALED(status)) {
+                int sig = WTERMSIG(status);
+                printf("[%d] Killed: PID %d terminated by signal %d\n", jid, pid, sig);
+            } else {
+                printf("[%d] Done: PID %d\n", jid, pid);
+            }
+            remove_job_by_pid(pid);
+        } else {
+            // Not a tracked job; just reap quietly
+        }
+    }
+}
+
+// Cleanup remaining background jobs when exiting: try to terminate and wait
+static void cleanup_jobs_on_exit() {
+    for (int i = 0; i < MAX_JOBS; i++) {
+        if (jobs[i].running) {
+            pid_t pid = jobs[i].pid;
+            kill(pid, SIGTERM);
+        }
+    }
+    // Wait for them to exit (blocking)
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, 0)) > 0) {
+        remove_job_by_pid(pid);
+    }
+}
+
+/**
+ * Execute built-in 'cd' command
+ */
+int builtin_cd(char *path) {
+    if (!path) path = getenv("HOME"); // default to home
+    if (chdir(path) != 0) {
+        perror("cd failed");
         return -1;
+    }
+    return 0;
+}
 
-    // Change directory
-    if (strcmp(cmd->command, "cd") == 0) {
-        char *dir = cmd->args[1];
-
-        if (!dir)
-            dir = getenv("HOME");
-
-        if (chdir(dir) != 0)
-            perror("cd");
-
+/**
+ * Execute built-in 'pwd' command
+ */
+int builtin_pwd() {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        printf("%s\n", cwd);
         return 0;
+    } else {
+        perror("getcwd failed");
+        return -1;
+    }
+}
+
+/**
+ * Execute built-in 'exit' command
+ */
+void builtin_exit() {
+    // Clean up any background jobs before exiting
+    cleanup_jobs_on_exit();
+    printf("Exiting mysh...\n");
+    exit(0);
+}
+
+/**
+ * Execute any command (built-in or external)
+ */
+void execute_command(Command *cmd) {
+    if (!cmd || !cmd->command) return;
+
+    // --- Handle built-in commands ---
+    if (strcmp(cmd->command, "cd") == 0 ||
+        strcmp(cmd->command, "pwd") == 0 ||
+        strcmp(cmd->command, "exit") == 0) {
+
+        int saved_stdin = -1;
+        int saved_stdout = -1;
+
+        /* ---- Apply input redirection (if any) ---- */
+        if (cmd->input_file) {
+            saved_stdin = dup(STDIN_FILENO);
+            if (saved_stdin < 0) {
+                perror("dup failed");
+                goto cleanup;
+            }
+
+            int fd = open(cmd->input_file, O_RDONLY);
+            if (fd < 0) {
+                perror("open input file");
+                goto restore;
+            }
+
+            if (dup2(fd, STDIN_FILENO) < 0) {
+                perror("dup2 failed");
+                close(fd);
+                goto restore;
+            }
+
+            close(fd);
+        }
+
+        /* ---- Apply output redirection (if any) ---- */
+        if (cmd->output_file) {
+            saved_stdout = dup(STDOUT_FILENO);
+            if (saved_stdout < 0) {
+                perror("dup failed");
+                goto restore;
+            }
+
+            int flags = O_WRONLY | O_CREAT;
+            flags |= cmd->append ? O_APPEND : O_TRUNC;
+
+            int fd = open(cmd->output_file, flags, 0644);
+            if (fd < 0) {
+                perror("open output file");
+                goto restore;
+            }
+
+            if (dup2(fd, STDOUT_FILENO) < 0) {
+                perror("dup2 failed");
+                close(fd);
+                goto restore;
+            }
+
+            close(fd);
+        }
+
+        /* ---- Execute the built-in ---- */
+        if (strcmp(cmd->command, "cd") == 0)
+            builtin_cd(cmd->args[1]);
+        else if (strcmp(cmd->command, "pwd") == 0)
+            builtin_pwd();
+        else if (strcmp(cmd->command, "exit") == 0)
+            builtin_exit();
+
+restore:
+        /* ---- Restore original descriptors ---- */
+        if (saved_stdin != -1) {
+            dup2(saved_stdin, STDIN_FILENO);
+            close(saved_stdin);
+        }
+
+        if (saved_stdout != -1) {
+            dup2(saved_stdout, STDOUT_FILENO);
+            close(saved_stdout);
+        }
+
+        goto cleanup;
     }
 
-    // Print working directory
-    if (strcmp(cmd->command, "pwd") == 0) {
-        char cwd[1024];
-        if (getcwd(cwd, sizeof(cwd)))
-            printf("%s\n", cwd);
-        else
-            perror("pwd");
 
-        return 0;
-    }
-
-    // ======================
-    // EXTERNAL COMMAND
-    // ======================
-
+    /* ==============================
+       3. EXTERNAL COMMANDS
+       (fork + exec)
+       ============================== */
     pid_t pid = fork();
 
     if (pid < 0) {
         perror("fork failed");
-        return 0;
+        goto cleanup;
     }
 
-    // CHILD PROCESS
     if (pid == 0) {
+        /* ---- Child process ---- */
 
-        // Handle input redirection
         if (cmd->input_file) {
             int fd = open(cmd->input_file, O_RDONLY);
             if (fd < 0) {
-                perror("input file");
+                perror("open input file");
                 exit(1);
             }
             dup2(fd, STDIN_FILENO);
             close(fd);
         }
 
-        // Handle output redirection
         if (cmd->output_file) {
             int flags = O_WRONLY | O_CREAT;
             flags |= cmd->append ? O_APPEND : O_TRUNC;
 
             int fd = open(cmd->output_file, flags, 0644);
             if (fd < 0) {
-                perror("output file");
+                perror("open output file");
                 exit(1);
             }
-
             dup2(fd, STDOUT_FILENO);
             close(fd);
         }
 
-        // Replace child process with new program
         execvp(cmd->command, cmd->args);
 
-        // If exec fails
         perror("exec failed");
         exit(127);
     }
 
-    // PARENT PROCESS
+    /* ---- Parent process ---- */
     if (!cmd->background) {
-        // Foreground → wait for child
-        waitpid(pid, NULL, 0);
+        int status;
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code != 0)
+                printf("Command exited with code %d\n", code);
+        }
     } else {
-        // Background → do not wait
-        printf("Started background PID %d\n", pid);
+        char *cmdstr = build_cmd_string(cmd);
+        int jid = add_job(pid, cmdstr);
+
+        if (jid < 0) {
+            printf("Failed to add background job for PID %d\n", pid);
+        } else {
+            printf("[%d] Started: %s (PID: %d)\n",
+                jid,
+                cmdstr ? cmdstr : cmd->command,
+                pid);
+        }
+
+        if (cmdstr)
+            free(cmdstr);
     }
 
-    return 0;
+
+cleanup:
+    /* ==============================
+       4. MEMORY CLEANUP
+       ============================== */
+    if (cmd->command)
+        free(cmd->command);
+
+    for (int i = 1; cmd->args[i]; i++)
+        free(cmd->args[i]);
+
+    if (cmd->input_file)
+        free(cmd->input_file);
+
+    if (cmd->output_file)
+        free(cmd->output_file);
 }

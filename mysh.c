@@ -1,35 +1,40 @@
+// mysh.c
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "shell.h"
 
-int main() {
+#define MAX_LINE 1024
 
+int main() {
     char line[MAX_LINE];
-    Command cmd;
 
     while (1) {
-
-        // Clean finished background processes
-        reap_background();
-
+        // Reap any finished background jobs
+        reap_background_jobs();
         // Display prompt
         printf("mysh> ");
         fflush(stdout);
 
-        // Read user input
-        if (!fgets(line, MAX_LINE, stdin))
+        // Read input
+        if (!fgets(line, sizeof(line), stdin)) {
+            printf("\n"); // Handle Ctrl+D gracefully
             break;
+        }
 
         // Remove trailing newline
         line[strcspn(line, "\n")] = '\0';
 
-        // Parse input into Command struct
-        parse_command(line, &cmd);
+        // Skip empty input
+        if (strlen(line) == 0) continue;
 
-        // Execute parsed command
-        if (execute_command(&cmd) == -1)
-            break;
+        // Parse the command
+        Command cmd = parse_command(line);
+
+        // Execute the command
+        execute_command(&cmd);
     }
 
+    printf("Exiting mysh...\n");
     return 0;
 }

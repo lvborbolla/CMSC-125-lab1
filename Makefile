@@ -1,16 +1,18 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11
+CFLAGS = -Wall -std=c99 -D_POSIX_C_SOURCE=200809L
+SOURCES = mysh.c parser.c executor.c
+OBJECTS = $(SOURCES:.c=.o)
+EXECUTABLE = mysh
 
-OBJ = mysh.o parser.o executor.o
+all: $(EXECUTABLE)
 
-# Link
-mysh: $(OBJ)
-	$(CC) $(OBJ) -o mysh
+$(EXECUTABLE): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $^
 
-# Compile
-%.o: %.c shell.h
-	$(CC) $(CFLAGS) -c $<
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-# Cleanup
 clean:
-	rm -f *.o mysh
+	rm -f $(OBJECTS) $(EXECUTABLE)
+
+.PHONY: all clean
