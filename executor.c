@@ -179,7 +179,8 @@ void execute_command(Command *cmd) {
             if (cmd->input_file) {
                 int fd = open(cmd->input_file, O_RDONLY);
                 if (fd < 0) {
-                    perror("open input file");
+                    fprintf(stderr, "mysh: cannot open input file '%s': ", cmd->input_file);
+                    perror(NULL);
                     exit(1);
                 }
                 dup2(fd, STDIN_FILENO);
@@ -192,7 +193,8 @@ void execute_command(Command *cmd) {
                 flags |= cmd->append ? O_APPEND : O_TRUNC;
                 int fd = open(cmd->output_file, flags, 0644);
                 if (fd < 0) {
-                    perror("open output file");
+                    fprintf(stderr, "mysh: cannot open output file '%s': ", cmd->output_file);
+                    perror(NULL);
                     exit(1);
                 }
                 dup2(fd, STDOUT_FILENO);
@@ -214,6 +216,9 @@ void execute_command(Command *cmd) {
                     } else if (exit_code != 0) {
                         printf("Command exited with code %d\n", exit_code);
                     }
+                } else if (WIFSIGNALED(status)) {
+                    int sig = WTERMSIG(status);
+                    printf("Command terminated by signal %d\n", sig);
                 }
             } else {
                 // Build command string and register job
