@@ -1,0 +1,12 @@
+pwd
+echo "Test 1: Basic echo" > test_output.txt
+cat test_output.txt
+echo "Test 2: Append" >> test_output.txt
+echo "Test 3: Input redirection"
+echo -e "apple\nzebra\nbanana" > unsorted.txt
+sort < unsorted.txt > sorted.txt
+cat sorted.txt
+echo "Test 4: Background job"
+sleep 1 &
+echo "Shell is responsive"
+exit

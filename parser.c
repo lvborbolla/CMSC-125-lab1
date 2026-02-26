@@ -35,6 +35,11 @@ Command parse_command(char *line) {
     while (token != NULL) {
         if (strcmp(token, "<") == 0) {
             // Input redirection
+            if (cmd.input_file) {
+                fprintf(stderr, "mysh: syntax error: multiple input redirections\n");
+                free(cmd.input_file);
+                cmd.input_file = NULL;
+            }
             token = strtok(NULL, " \t\n");
             if (token) {
                 cmd.input_file = strdup(token);
@@ -43,6 +48,11 @@ Command parse_command(char *line) {
             }
         } else if (strcmp(token, ">") == 0) {
             // Output redirection (overwrite)
+            if (cmd.output_file) {
+                fprintf(stderr, "mysh: syntax error: multiple output redirections\n");
+                free(cmd.output_file);
+                cmd.output_file = NULL;
+            }
             token = strtok(NULL, " \t\n");
             if (token) {
                 cmd.output_file = strdup(token);
@@ -52,6 +62,11 @@ Command parse_command(char *line) {
             }
         } else if (strcmp(token, ">>") == 0) {
             // Output redirection (append)
+            if (cmd.output_file) {
+                fprintf(stderr, "mysh: syntax error: multiple output redirections\n");
+                free(cmd.output_file);
+                cmd.output_file = NULL;
+            }
             token = strtok(NULL, " \t\n");
             if (token) {
                 cmd.output_file = strdup(token);
