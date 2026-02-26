@@ -209,7 +209,9 @@ void execute_command(Command *cmd) {
                 waitpid(pid, &status, 0);
                 if (WIFEXITED(status)) {
                     int exit_code = WEXITSTATUS(status);
-                    if (exit_code != 0) {
+                    if (exit_code == 127) {
+                        printf("mysh: command not found: %s\n", cmd->command);
+                    } else if (exit_code != 0) {
                         printf("Command exited with code %d\n", exit_code);
                     }
                 }
